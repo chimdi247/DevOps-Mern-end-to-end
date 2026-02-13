@@ -19,7 +19,7 @@ pipeline {
         stage('Git: Code Checkout') {
             steps {
                 script{
-                    code_checkout("https://github.com/chimdi247/DevOps-Mern-end-to-end.git","main")
+                    clone("https://github.com/chimdi247/DevOps-Mern-end-to-end.git","main")
                 }
             }
         }
@@ -64,7 +64,7 @@ pipeline {
                         echo "Adding changes to git: "
                         git add .
                         
-                        echo "Commiting changes: "
+                        echo "Commit changes: "
                         git commit -m "Updated environment variables"
                         
                         echo "Pushing changes to github: "

@@ -4,6 +4,7 @@ pipeline {
     
     environment{
         SONAR_HOME = tool "Sonar"
+        NVD_API_KEY = credentials('NVD_API_KEY')
     }
     
     parameters {
@@ -48,7 +49,13 @@ pipeline {
         stage("OWASP: Dependency check"){
             steps{
                 script{
-                    owasp_dependency()
+                    dependencyCheck additionalArguments: '''
+                        --scan ./
+                        --format XML
+                        --format HTML
+                        --nvdApiKey ${NVD_API_KEY}
+                    ''', odcInstallation: 'OWASP'
+                    dependencyCheckPublisher pattern: '**/dependency-check-report.xml'
                 }
             }
         }
@@ -56,18 +63,27 @@ pipeline {
         stage("SonarQube: Code Analysis"){
             steps{
                 script{
-                    sonarqube_analysis("Sonar","wanderlust","wanderlust")
+                    withSonarQubeEnv("Sonar"){
+                        sh '''
+                            ${SONAR_HOME}/bin/sonar-scanner \
+                            -Dsonar.projectName=wanderlust \
+                            -Dsonar.projectKey=wanderlust \
+                            -Dsonar.sources=.
+                        '''
+                    }
                 }
             }
         }
         
         stage("SonarQube: Code Quality Gates"){
-            steps{
-                script{
-                    sonarqube_code_quality()
-                }
-            }
-        }
+             steps{
+                 script{
+                     timeout(time: 1, unit: 'MINUTES') {
+                         waitForQualityGate abortPipeline: false
+                     }
+                 }
+             }
+         }
         
         stage('Exporting environment variables') {
             parallel{
@@ -96,22 +112,26 @@ pipeline {
         stage("Docker: Build Images"){
             steps{
                 script{
-                        dir('backend'){
-                            docker_build("wanderlust-backend-beta","${params.BACKEND_DOCKER_TAG}","chimdi247")
-                        }
+                    dir('backend'){
+                        sh "docker build -t chimdi247/wanderlust-backend-beta:${params.BACKEND_DOCKER_TAG} ."
+                    }
                     
-                        dir('frontend'){
-                            docker_build("wanderlust-frontend-beta","${params.FRONTEND_DOCKER_TAG}","chimdi247")
-                        }
+                    dir('frontend'){
+                        sh "docker build -t chimdi247/wanderlust-frontend-beta:${params.FRONTEND_DOCKER_TAG} ."
+                    }
                 }
             }
         }
         
+        
         stage("Docker: Push to DockerHub"){
             steps{
                 script{
-                    docker_push("wanderlust-backend-beta","${params.BACKEND_DOCKER_TAG}","chimdi247") 
-                    docker_push("wanderlust-frontend-beta","${params.FRONTEND_DOCKER_TAG}","chimdi247")
+                    withCredentials([usernamePassword(credentialsId: 'docker', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+                        sh "docker push chimdi247/wanderlust-backend-beta:${params.BACKEND_DOCKER_TAG}"
+                        sh "docker push chimdi247/wanderlust-frontend-beta:${params.FRONTEND_DOCKER_TAG}"
+                    }
                 }
             }
         }
