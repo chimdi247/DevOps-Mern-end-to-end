@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: chimdi247/wanderlust-backend-beta:v4
+          image: chimdi247/wanderlust-backend-beta:v5
           ports:
             - containerPort: 8080
 ---
