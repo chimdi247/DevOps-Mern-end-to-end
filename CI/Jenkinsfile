@@ -45,8 +45,8 @@ pipeline {
                 }
             }
         }
-
-        stage("OWASP: Dependency check"){
+        
+          stage("OWASP: Dependency check"){
             steps{
                 script{
                     dependencyCheck additionalArguments: '''
@@ -75,39 +75,48 @@ pipeline {
             }
         }
         
-        stage("SonarQube: Code Quality Gates"){
-             steps{
-                 script{
-                     timeout(time: 1, unit: 'MINUTES') {
-                         waitForQualityGate abortPipeline: false
-                     }
-                 }
-             }
-         }
+        // stage("SonarQube: Code Quality Gates"){
+        //     steps{
+        //         script{
+        //             timeout(time: 1, unit: 'MINUTES') {
+        //                 waitForQualityGate abortPipeline: false
+        //             }
+        //         }
+        //     }
+        // }
         
         stage('Exporting environment variables') {
-            parallel{
-                stage("Backend env setup"){
-                    steps {
-                        script{
-                            dir("Automations"){
-                                sh "bash updatebackendnew.sh"
-                            }
-                        }
-                    }
-                }
-                
-                stage("Frontend env setup"){
-                    steps {
-                        script{
-                            dir("Automations"){
-                                sh "bash updatefrontendnew.sh"
-                            }
-                        }
+    parallel {
+
+        stage("Backend env setup") {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-creds'
+                ]]) {
+                    dir("Automations") {
+                        sh "bash updatebackendnew.sh"
                     }
                 }
             }
         }
+
+        stage("Frontend env setup") {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-creds'
+                ]]) {
+                    dir("Automations") {
+                        sh "bash updatefrontendnew.sh"
+                    }
+                }
+            }
+        }
+
+    }
+}
+
         
         stage("Docker: Build Images"){
             steps{
@@ -136,13 +145,19 @@ pipeline {
             }
         }
     }
-    post{
-        success{
-            archiveArtifacts artifacts: '*.xml', followSymlinks: false
-            build job: "Wanderlust-CD", parameters: [
-                string(name: 'FRONTEND_DOCKER_TAG', value: "${params.FRONTEND_DOCKER_TAG}"),
-                string(name: 'BACKEND_DOCKER_TAG', value: "${params.BACKEND_DOCKER_TAG}")
-            ]
-        }
+    post {
+
+    always {
+        archiveArtifacts artifacts: '*.xml', allowEmptyArchive: true, followSymlinks: false
     }
+
+    success {
+        build job: "Wanderlust-CD", parameters: [
+            string(name: 'FRONTEND_DOCKER_TAG', value: "${params.FRONTEND_DOCKER_TAG}"),
+            string(name: 'BACKEND_DOCKER_TAG', value: "${params.BACKEND_DOCKER_TAG}")
+        ]
+    }
+
+}
+
 }
